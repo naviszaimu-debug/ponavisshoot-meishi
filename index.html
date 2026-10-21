@@ -34,10 +34,11 @@
   label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
   .field-label { font-size: 13px; color: #4b5563; margin: 14px 0 4px; }
   .field-label small { color: #9ca3af; }
+  .field-label small.req { color: #b91c1c; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { padding: 8px 14px; border-radius: 20px; border: 1px solid #9ca3af; background: #fff; font-size: 14px; color: #374151; }
   .chip.on { background: #0f4c81; border-color: #0f4c81; color: #fff; }
-  input[type=text], textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #9ca3af; border-radius: 8px; background: #fff; font-family: inherit; }
+  input[type=text], input[type=date], textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #9ca3af; border-radius: 8px; background: #fff; font-family: inherit; }
   textarea { min-height: 90px; resize: vertical; }
   .inline { display: flex; gap: 8px; }
   .inline input { flex: 1; }
@@ -85,6 +86,9 @@
   </div>
   <div class="row"><label class="check"><input type="checkbox" id="no-back"> 裏面なし(白紙・印字なし)</label></div>
 
+  <div class="field-label">受領日 <small class="req">(必須・初期値は今日)</small></div>
+  <input type="date" id="received">
+
   <div class="field-label">区分 <small>(任意)</small></div>
   <div class="chips" id="category-chips"></div>
 
@@ -111,6 +115,8 @@
     <button class="btn" id="btn-back" type="button">← 一覧へ戻る</button>
     <div class="row detail-imgs"><div id="d-front">表</div><div id="d-back">裏</div></div>
     <div class="meta" id="d-meta"></div>
+    <div class="field-label">受領日</div>
+    <input type="date" id="d-received">
     <div class="field-label">区分</div>
     <div class="chips" id="d-category-chips"></div>
     <div class="field-label">目的</div>
@@ -135,6 +141,10 @@ const JPEG_QUALITY = 0.85;
 const TOKEN = new URLSearchParams(location.search).get('token');
 
 const $ = (id) => document.getElementById(id);
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 let staffName = '';
 let cards = [];
 let filterMode = 'all';
@@ -221,7 +231,7 @@ function fillAddressFromGps(inputEl, statusEl, btn) {
 
 // ---------- 撮影タブ ----------
 function refreshShootButton() {
-  $('btn-save').disabled = !(shoot.front && !shoot.sending && staffName);
+  $('btn-save').disabled = !(shoot.front && $('received').value && !shoot.sending && staffName);
   $('btn-save').textContent = shoot.sending ? '送信中…' : '保存する';
   refreshRotateButtons();
 }
@@ -274,13 +284,14 @@ function renderShootChips() {
   buildChips($('purpose-chips'), shoot.purpose, (p) => { shoot.purpose = p; renderShootChips(); });
   buildChips($('category-chips'), shoot.category, (p) => { shoot.category = p; renderShootChips(); }, CATEGORIES);
 }
+$('received').oninput = refreshShootButton;
 $('btn-geo').onclick = () => fillAddressFromGps($('place'), $('shoot-status'), $('btn-geo'));
 
 function resetShootForm() {
   shoot = { front: null, back: null, purpose: '', category: '', sending: false };
   ['front', 'back'].forEach((w) => { $('box-' + w).classList.remove('filled'); $('img-' + w).removeAttribute('src'); });
   $('no-back').checked = false; $('box-back').classList.remove('disabled');
-  $('place').value = ''; $('note').value = '';
+  $('place').value = ''; $('note').value = ''; $('received').value = todayStr();
   renderShootChips(); refreshShootButton();
 }
 
@@ -293,7 +304,7 @@ $('btn-save').onclick = async () => {
       action: 'create', id,
       front: shoot.front.base64,
       back: shoot.back ? shoot.back.base64 : null,
-      memo: { purpose: shoot.purpose, category: shoot.category, place: $('place').value, note: $('note').value }
+      memo: { receivedDate: $('received').value, purpose: shoot.purpose, category: shoot.category, place: $('place').value, note: $('note').value }
     });
     resetShootForm();
     setStatus($('shoot-status'), '保存しました。次の名刺を撮影できます', 'ok');
@@ -328,7 +339,7 @@ function renderList() {
     div.className = 'card';
     const head = [c.category, c.purpose, c.place].filter(Boolean).join(' / ');
     div.innerHTML = '<div class="top"><span></span><span></span></div><div class="main"></div>';
-    div.querySelector('.top span:first-child').textContent = fmtDate(c.registeredAt);
+    div.querySelector('.top span:first-child').textContent = c.receivedDate ? '受領 ' + c.receivedDate.replace(/-/g, '/') : fmtDate(c.registeredAt);
     div.querySelector('.top span:last-child').textContent = '登録: ' + c.registeredBy;
     const main = div.querySelector('.main');
     main.textContent = head || (c.note ? c.note.slice(0, 40) : '(メモなし)');
@@ -342,12 +353,13 @@ async function openDetail(id) {
   $('list-pane').style.display = 'none'; $('detail-pane').style.display = 'block';
   detail = { id, purpose: '', category: '', original: null };
   ['d-front', 'd-back'].forEach((k) => { $(k).textContent = '読み込み中…'; });
-  $('d-meta').textContent = ''; $('d-place').value = ''; $('d-note').value = '';
+  $('d-meta').textContent = ''; $('d-received').value = ''; $('d-place').value = ''; $('d-note').value = '';
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '', '');
   renderDetailChips();
   try {
     const { card } = await api({ action: 'get', id });
-    detail.original = { purpose: card.purpose, category: card.category, place: card.place, note: card.note };
+    detail.original = { receivedDate: card.receivedDate, purpose: card.purpose, category: card.category, place: card.place, note: card.note };
+    $('d-received').value = card.receivedDate;
     detail.purpose = card.purpose; detail.category = card.category;
     $('d-place').value = card.place; $('d-note').value = card.note;
     $('d-meta').textContent = '登録: ' + card.registeredBy + '(' + fmtDate(card.registeredAt) + ')  最終更新: ' + card.lastUpdatedBy + '(' + fmtDate(card.lastUpdatedAt) + ')';
@@ -368,15 +380,16 @@ function renderDetailChips() {
 }
 function refreshDetailSave() {
   const o = detail.original;
-  $('btn-d-save').disabled = !o || (o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value);
+  const dateOk = $('d-received').value !== '' || !o || o.receivedDate === ''; // 入っている受領日は空にできない
+  $('btn-d-save').disabled = !o || !dateOk || (o.receivedDate === $('d-received').value && o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value);
 }
-$('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
+$('d-received').oninput = refreshDetailSave; $('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
 $('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status'), $('btn-d-geo'));
 
 $('btn-d-save').onclick = async () => {
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '保存中…', 'busy');
   try {
-    const memo = { purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value };
+    const memo = { receivedDate: $('d-received').value, purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value };
     await api({ action: 'updateMemo', id: detail.id, memo });
     detail.original = memo;
     setStatus($('detail-status'), 'メモを保存しました', 'ok');
@@ -413,7 +426,7 @@ if (!TOKEN) {
   $('who').textContent = '設定が未完了です';
   document.body.insertAdjacentHTML('beforeend', '<div class="gate">HTML内の GAS_URL を、デプロイ後のウェブアプリURLに書き換えてください</div>');
 } else {
-  renderShootChips(); renderFilters(); refreshShootButton(); loadInfo();
+  $('received').value = todayStr(); renderShootChips(); renderFilters(); refreshShootButton(); loadInfo();
 }
 </script>
 </body>
