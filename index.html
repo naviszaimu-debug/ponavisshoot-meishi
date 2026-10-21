@@ -85,6 +85,9 @@
   </div>
   <div class="row"><label class="check"><input type="checkbox" id="no-back"> 裏面なし(白紙・印字なし)</label></div>
 
+  <div class="field-label">区分 <small>(任意)</small></div>
+  <div class="chips" id="category-chips"></div>
+
   <div class="field-label">目的 <small>(任意)</small></div>
   <div class="chips" id="purpose-chips"></div>
 
@@ -108,6 +111,8 @@
     <button class="btn" id="btn-back" type="button">← 一覧へ戻る</button>
     <div class="row detail-imgs"><div id="d-front">表</div><div id="d-back">裏</div></div>
     <div class="meta" id="d-meta"></div>
+    <div class="field-label">区分</div>
+    <div class="chips" id="d-category-chips"></div>
     <div class="field-label">目的</div>
     <div class="chips" id="d-purpose-chips"></div>
     <div class="field-label">場所</div>
@@ -124,6 +129,7 @@
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw2tt98PZcaFTtDWYDIpYw-2_zhODCJW5LCXo51xK1YqqwIqrqDU30Cn12v3oRAyREuqg/exec";
 
 const PURPOSES = ['展示会', '訪問', '紹介', 'セミナー', 'その他'];
+const CATEGORIES = ['顧問先', 'その他']; // 関係区分(GAS側のCATEGORIESと揃える)
 const MAX_EDGE = 1800;
 const JPEG_QUALITY = 0.85;
 const TOKEN = new URLSearchParams(location.search).get('token');
@@ -132,8 +138,8 @@ const $ = (id) => document.getElementById(id);
 let staffName = '';
 let cards = [];
 let filterMode = 'all';
-let shoot = { front: null, back: null, purpose: '', sending: false };
-let detail = { id: null, purpose: '', original: null };
+let shoot = { front: null, back: null, purpose: '', category: '', sending: false };
+let detail = { id: null, purpose: '', category: '', original: null };
 
 // ---------- 通信 ----------
 async function api(payload) {
@@ -186,9 +192,9 @@ async function canvasToJpeg(canvas) {
 }
 
 // ---------- 共通UI ----------
-function buildChips(container, current, onPick) {
+function buildChips(container, current, onPick, options) {
   container.innerHTML = '';
-  PURPOSES.forEach((p) => {
+  (options || PURPOSES).forEach((p) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'chip' + (p === current ? ' on' : '');
@@ -264,11 +270,14 @@ $('no-back').onchange = () => {
   refreshRotateButtons();
 };
 
-function renderShootChips() { buildChips($('purpose-chips'), shoot.purpose, (p) => { shoot.purpose = p; renderShootChips(); }); }
+function renderShootChips() {
+  buildChips($('purpose-chips'), shoot.purpose, (p) => { shoot.purpose = p; renderShootChips(); });
+  buildChips($('category-chips'), shoot.category, (p) => { shoot.category = p; renderShootChips(); }, CATEGORIES);
+}
 $('btn-geo').onclick = () => fillAddressFromGps($('place'), $('shoot-status'), $('btn-geo'));
 
 function resetShootForm() {
-  shoot = { front: null, back: null, purpose: '', sending: false };
+  shoot = { front: null, back: null, purpose: '', category: '', sending: false };
   ['front', 'back'].forEach((w) => { $('box-' + w).classList.remove('filled'); $('img-' + w).removeAttribute('src'); });
   $('no-back').checked = false; $('box-back').classList.remove('disabled');
   $('place').value = ''; $('note').value = '';
@@ -284,7 +293,7 @@ $('btn-save').onclick = async () => {
       action: 'create', id,
       front: shoot.front.base64,
       back: shoot.back ? shoot.back.base64 : null,
-      memo: { purpose: shoot.purpose, place: $('place').value, note: $('note').value }
+      memo: { purpose: shoot.purpose, category: shoot.category, place: $('place').value, note: $('note').value }
     });
     resetShootForm();
     setStatus($('shoot-status'), '保存しました。次の名刺を撮影できます', 'ok');
@@ -299,7 +308,7 @@ $('btn-save').onclick = async () => {
 function fmtDate(s) { return (s || '').slice(0, 16).replace(/-/g, '/'); }
 
 function renderFilters() {
-  const defs = [['all', 'すべて'], ['nomemo', 'メモ未記入'], ['mine', '自分の登録']];
+  const defs = [['all', 'すべて'], ['nomemo', 'メモ未記入'], ['client', '顧問先'], ['mine', '自分の登録']];
   $('filters').innerHTML = '';
   defs.forEach(([k, label]) => {
     const b = document.createElement('button');
@@ -310,14 +319,14 @@ function renderFilters() {
 }
 
 function renderList() {
-  const items = cards.filter((c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'mine' && c.registeredBy === staffName));
+  const items = cards.filter((c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'client' && c.category === '顧問先') || (filterMode === 'mine' && c.registeredBy === staffName));
   const box = $('list');
   box.innerHTML = '';
   if (!items.length) { box.innerHTML = '<div class="empty">該当する名刺はありません</div>'; return; }
   items.forEach((c) => {
     const div = document.createElement('div');
     div.className = 'card';
-    const head = [c.purpose, c.place].filter(Boolean).join(' / ');
+    const head = [c.category, c.purpose, c.place].filter(Boolean).join(' / ');
     div.innerHTML = '<div class="top"><span></span><span></span></div><div class="main"></div>';
     div.querySelector('.top span:first-child').textContent = fmtDate(c.registeredAt);
     div.querySelector('.top span:last-child').textContent = '登録: ' + c.registeredBy;
@@ -331,15 +340,15 @@ function renderList() {
 
 async function openDetail(id) {
   $('list-pane').style.display = 'none'; $('detail-pane').style.display = 'block';
-  detail = { id, purpose: '', original: null };
+  detail = { id, purpose: '', category: '', original: null };
   ['d-front', 'd-back'].forEach((k) => { $(k).textContent = '読み込み中…'; });
   $('d-meta').textContent = ''; $('d-place').value = ''; $('d-note').value = '';
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '', '');
   renderDetailChips();
   try {
     const { card } = await api({ action: 'get', id });
-    detail.original = { purpose: card.purpose, place: card.place, note: card.note };
-    detail.purpose = card.purpose;
+    detail.original = { purpose: card.purpose, category: card.category, place: card.place, note: card.note };
+    detail.purpose = card.purpose; detail.category = card.category;
     $('d-place').value = card.place; $('d-note').value = card.note;
     $('d-meta').textContent = '登録: ' + card.registeredBy + '(' + fmtDate(card.registeredAt) + ')  最終更新: ' + card.lastUpdatedBy + '(' + fmtDate(card.lastUpdatedAt) + ')';
     showImg('d-front', card.frontImage, '表'); showImg('d-back', card.backImage, '裏なし');
@@ -353,10 +362,13 @@ function showImg(id, src, emptyText) {
   const img = document.createElement('img'); img.src = src; el.appendChild(img);
 }
 
-function renderDetailChips() { buildChips($('d-purpose-chips'), detail.purpose, (p) => { detail.purpose = p; renderDetailChips(); refreshDetailSave(); }); }
+function renderDetailChips() {
+  buildChips($('d-purpose-chips'), detail.purpose, (p) => { detail.purpose = p; renderDetailChips(); refreshDetailSave(); });
+  buildChips($('d-category-chips'), detail.category, (p) => { detail.category = p; renderDetailChips(); refreshDetailSave(); }, CATEGORIES);
+}
 function refreshDetailSave() {
   const o = detail.original;
-  $('btn-d-save').disabled = !o || (o.purpose === detail.purpose && o.place === $('d-place').value && o.note === $('d-note').value);
+  $('btn-d-save').disabled = !o || (o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value);
 }
 $('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
 $('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status'), $('btn-d-geo'));
@@ -364,7 +376,7 @@ $('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status
 $('btn-d-save').onclick = async () => {
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '保存中…', 'busy');
   try {
-    const memo = { purpose: detail.purpose, place: $('d-place').value, note: $('d-note').value };
+    const memo = { purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value };
     await api({ action: 'updateMemo', id: detail.id, memo });
     detail.original = memo;
     setStatus($('detail-status'), 'メモを保存しました', 'ok');
