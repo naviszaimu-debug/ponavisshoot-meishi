@@ -8,7 +8,15 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f2f4f7; color: #1f2937; padding-bottom: 40px; }
   header { position: sticky; top: 0; z-index: 5; background: #0f4c81; color: #fff; padding: 10px 16px; }
+  header .hrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   header .who { font-size: 18px; font-weight: bold; }
+  #btn-send { padding: 8px 12px; font-size: 14px; font-weight: bold; border-radius: 8px; border: none; background: #fff; color: #0f4c81; white-space: nowrap; }
+  #btn-send:disabled { opacity: .5; }
+  .menu-badge { display: none; margin-left: 4px; }
+  .menu-badge.show { display: inline; }
+  #send-status { font-size: 12px; min-height: 16px; margin-top: 2px; }
+  .badge.unsent { background: #fecaca; color: #991b1b; }
+  .hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
   header .sub { font-size: 12px; opacity: .85; }
   .tabs { display: flex; background: #fff; border-bottom: 1px solid #d1d5db; position: sticky; top: 58px; z-index: 4; }
   .tab { flex: 1; padding: 12px 0; text-align: center; font-size: 15px; background: none; border: none; border-bottom: 3px solid transparent; color: #6b7280; }
@@ -63,8 +71,15 @@
 <body>
 
 <header>
-  <div class="who" id="who">読み込み中…</div>
-  <div class="sub">名刺登録(PoNavisShoot別館)</div>
+  <div class="hrow">
+    <div>
+      <div class="who" id="who">読み込み中…</div>
+      <div class="sub">名刺登録(PoNavisShoot別館)</div>
+    </div>
+    <!-- 未送信が無くてもボタンは常時表示(押せない状態)。未送信がある間は⚠️を出し続ける(PNSと同じ方式) -->
+    <button id="btn-send" type="button" disabled>まとめて送信<span id="send-count"></span><span id="send-badge" class="menu-badge">⚠️</span></button>
+  </div>
+  <div id="send-status"></div>
 </header>
 
 <div class="tabs">
@@ -102,6 +117,7 @@
   <textarea id="note" placeholder="例: ○○の件で紹介してもらった。来月訪問予定"></textarea>
 
   <button class="primary" id="btn-save" disabled>保存する</button>
+  <div class="hint">保存すると、いったんこの端末に入ります。上の「まとめて送信」を押すと、まとめて送られます。</div>
   <div class="status" id="shoot-status"></div>
 </section>
 
@@ -146,6 +162,8 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 let staffName = '';
+let pendingItems = []; // 端末内にある未送信の名刺(この専用URLの担当者分のみ)
+let batchSending = false;
 let cards = [];
 let filterMode = 'all';
 let shoot = { front: null, back: null, purpose: '', category: '', sending: false };
@@ -156,7 +174,7 @@ async function api(payload) {
   const res = await fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ token: TOKEN }, payload))
+    body: JSON.stringify(Object.assign({ token: TOKEN }, payload)) // payload.tokenがあればそちらを使う(送信待ちは保存時のtokenで送る)
   });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || '通信エラー');
@@ -164,6 +182,97 @@ async function api(payload) {
 }
 
 function setStatus(el, text, kind) { el.textContent = text; el.className = 'status ' + (kind || ''); }
+
+// ---------- 端末内の送信待ち(IndexedDB。使えない環境ではこのページを開いている間だけ保持) ----------
+let db = null;
+let memQueue = [];
+
+function openDb() {
+  return new Promise((resolve) => {
+    try {
+      const r = indexedDB.open('pnsbc-meishi', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('queue', { keyPath: 'id' });
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+}
+function qAll() {
+  if (!db) return Promise.resolve(memQueue.slice());
+  return new Promise((resolve, reject) => {
+    const rq = db.transaction('queue', 'readonly').objectStore('queue').getAll();
+    rq.onsuccess = () => resolve(rq.result);
+    rq.onerror = () => reject(rq.error);
+  });
+}
+function qPut(item) {
+  if (!db) { memQueue.push(item); return Promise.resolve(); }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('端末に保存できませんでした(空き容量を確認してください)'));
+  });
+}
+function qDel(id) {
+  if (!db) { memQueue = memQueue.filter((x) => x.id !== id); return Promise.resolve(); }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function nowStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+async function reloadPending() {
+  const all = await qAll();
+  pendingItems = all.filter((x) => x.token === TOKEN).sort((a, b) => (a.capturedAt < b.capturedAt ? -1 : 1));
+  refreshSendBar();
+  renderList();
+}
+
+// 未送信がある間は⚠️を出し続ける。ボタン自体は常時表示で、未送信が無い時/送信中は押せない状態にする
+function refreshSendBar() {
+  const n = pendingItems.length;
+  $('send-count').textContent = n ? ' ' + n + '件' : '';
+  $('send-badge').classList.toggle('show', n > 0);
+  $('btn-send').disabled = n === 0 || batchSending;
+}
+
+$('btn-send').onclick = async () => {
+  if (!pendingItems.length || batchSending) return;
+  batchSending = true; refreshSendBar(); refreshShootButton();
+  window.onbeforeunload = () => '送信中です。閉じると未送信が残ります';
+  const targets = pendingItems.slice();
+  let ok = 0, failed = 0, firstError = '';
+  for (let i = 0; i < targets.length; i++) {
+    setStatus($('send-status'), targets.length + '件中 ' + (i + 1) + '件目を送信中…(画面を閉じないでください)', 'busy');
+    const it = targets[i];
+    try {
+      await api({ action: 'create', token: it.token, id: it.id, capturedAt: it.capturedAt, front: it.front, back: it.back, memo: it.memo });
+      await qDel(it.id);
+      ok++;
+    } catch (e) {
+      failed++;
+      if (!firstError) firstError = String(e.message || e);
+      if (e instanceof TypeError) break; // 通信そのものが切れている時は、残りも送れないのでここで止める
+    }
+  }
+  window.onbeforeunload = null;
+  batchSending = false;
+  await reloadPending();
+  refreshShootButton();
+  if (failed) setStatus($('send-status'), ok + '件送信、残り ' + pendingItems.length + '件が未送信です(' + firstError + ')。もう一度「まとめて送信」を押してください', 'err');
+  else setStatus($('send-status'), ok + '件を送信しました', 'ok');
+  loadInfo();
+};
 
 // ---------- 画像処理(向きを正しくして縮小しJPEG化) ----------
 // 名刺は横向きが大半なので、縦長に撮れた写真は自動で90°回して横向きにする(縦向きの名刺は回転ボタンで直す)
@@ -231,8 +340,8 @@ function fillAddressFromGps(inputEl, statusEl, btn) {
 
 // ---------- 撮影タブ ----------
 function refreshShootButton() {
-  $('btn-save').disabled = !(shoot.front && $('received').value && !shoot.sending && staffName);
-  $('btn-save').textContent = shoot.sending ? '送信中…' : '保存する';
+  $('btn-save').disabled = !(shoot.front && $('received').value && !shoot.sending && !batchSending && staffName);
+  $('btn-save').textContent = shoot.sending ? '保存中…' : '保存する';
   refreshRotateButtons();
 }
 
@@ -297,18 +406,18 @@ function resetShootForm() {
 
 $('btn-save').onclick = async () => {
   shoot.sending = true; refreshShootButton();
-  setStatus($('shoot-status'), '送信中…(そのままお待ちください)', 'busy');
+  setStatus($('shoot-status'), '保存中…', 'busy');
   try {
     const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 24);
-    await api({
-      action: 'create', id,
+    await qPut({
+      id, token: TOKEN, staff: staffName, capturedAt: nowStamp(),
       front: shoot.front.base64,
       back: shoot.back ? shoot.back.base64 : null,
       memo: { receivedDate: $('received').value, purpose: shoot.purpose, category: shoot.category, place: $('place').value, note: $('note').value }
     });
+    await reloadPending();
     resetShootForm();
-    setStatus($('shoot-status'), '保存しました。次の名刺を撮影できます', 'ok');
-    loadInfo();
+    setStatus($('shoot-status'), '端末に保存しました(未送信 ' + pendingItems.length + '件)。次の名刺を撮影できます', 'ok');
   } catch (e) {
     shoot.sending = false; refreshShootButton();
     setStatus($('shoot-status'), '保存できませんでした(入力内容は残してあります): ' + (e.message || e), 'err');
@@ -330,7 +439,11 @@ function renderFilters() {
 }
 
 function renderList() {
-  const items = cards.filter((c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'client' && c.category === '顧問先') || (filterMode === 'mine' && c.registeredBy === staffName));
+  const pendingCards = pendingItems.map((p) => ({
+    id: p.id, pending: true, receivedDate: p.memo.receivedDate, registeredAt: p.capturedAt, registeredBy: staffName,
+    memoStatus: (p.memo.purpose || p.memo.place || p.memo.note) ? '済' : '未', category: p.memo.category, purpose: p.memo.purpose, place: p.memo.place, note: p.memo.note
+  })).reverse();
+  const items = pendingCards.concat(cards).filter((c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'client' && c.category === '顧問先') || (filterMode === 'mine' && c.registeredBy === staffName));
   const box = $('list');
   box.innerHTML = '';
   if (!items.length) { box.innerHTML = '<div class="empty">該当する名刺はありません</div>'; return; }
@@ -343,8 +456,9 @@ function renderList() {
     div.querySelector('.top span:last-child').textContent = '登録: ' + c.registeredBy;
     const main = div.querySelector('.main');
     main.textContent = head || (c.note ? c.note.slice(0, 40) : '(メモなし)');
+    if (c.pending) { const ub = document.createElement('span'); ub.className = 'badge unsent'; ub.textContent = '未送信'; main.appendChild(ub); }
     if (c.memoStatus !== '済') { const bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = 'メモ未記入'; main.appendChild(bd); }
-    div.onclick = () => openDetail(c.id);
+    if (!c.pending) div.onclick = () => openDetail(c.id); // 未送信分は送信後に開ける
     box.appendChild(div);
   });
 }
@@ -427,6 +541,11 @@ if (!TOKEN) {
   document.body.insertAdjacentHTML('beforeend', '<div class="gate">HTML内の GAS_URL を、デプロイ後のウェブアプリURLに書き換えてください</div>');
 } else {
   $('received').value = todayStr(); renderShootChips(); renderFilters(); refreshShootButton(); loadInfo();
+  openDb().then((d) => {
+    db = d;
+    if (!db) setStatus($('send-status'), '⚠️この端末では一時保存が使えません。閉じる前に必ず「まとめて送信」を押してください', 'err');
+    return reloadPending();
+  });
 }
 </script>
 </body>
