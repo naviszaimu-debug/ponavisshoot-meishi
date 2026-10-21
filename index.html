@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>名刺登録 - PoNavisShoot別館</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f2f4f7; color: #1f2937; padding-bottom: 40px; }
+  header { position: sticky; top: 0; z-index: 5; background: #0f4c81; color: #fff; padding: 10px 16px; }
+  header .who { font-size: 18px; font-weight: bold; }
+  header .sub { font-size: 12px; opacity: .85; }
+  .tabs { display: flex; background: #fff; border-bottom: 1px solid #d1d5db; position: sticky; top: 58px; z-index: 4; }
+  .tab { flex: 1; padding: 12px 0; text-align: center; font-size: 15px; background: none; border: none; border-bottom: 3px solid transparent; color: #6b7280; }
+  .tab.active { color: #0f4c81; border-bottom-color: #0f4c81; font-weight: bold; }
+  .view { display: none; padding: 14px 16px; max-width: 640px; margin: 0 auto; }
+  .view.active { display: block; }
+  .slots { display: flex; gap: 10px; }
+  .slot { flex: 1; }
+  .slot-label { font-size: 13px; color: #4b5563; margin-bottom: 4px; }
+  .slot-box { position: relative; aspect-ratio: 91 / 55; background: #fff; border: 2px dashed #9ca3af; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px; }
+  .slot-box img { width: 100%; height: 100%; object-fit: contain; display: none; }
+  .slot-box.filled { border-style: solid; border-color: #0f4c81; }
+  .slot-box.filled img { display: block; }
+  .slot-box.filled .slot-hint { display: none; }
+  .slot-box.disabled { opacity: .35; }
+  .slot input[type=file] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+  .slot-box.disabled input[type=file] { pointer-events: none; }
+  .row { margin-top: 10px; }
+  label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .field-label { font-size: 13px; color: #4b5563; margin: 14px 0 4px; }
+  .field-label small { color: #9ca3af; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 14px; border-radius: 20px; border: 1px solid #9ca3af; background: #fff; font-size: 14px; color: #374151; }
+  .chip.on { background: #0f4c81; border-color: #0f4c81; color: #fff; }
+  input[type=text], textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #9ca3af; border-radius: 8px; background: #fff; font-family: inherit; }
+  textarea { min-height: 90px; resize: vertical; }
+  .inline { display: flex; gap: 8px; }
+  .inline input { flex: 1; }
+  button.btn { padding: 10px 14px; font-size: 14px; border-radius: 8px; border: 1px solid #0f4c81; background: #fff; color: #0f4c81; }
+  button.primary { width: 100%; margin-top: 18px; padding: 14px; font-size: 17px; font-weight: bold; border: none; background: #0f4c81; color: #fff; border-radius: 10px; }
+  button:disabled { opacity: .4; }
+  .status { margin-top: 10px; min-height: 20px; font-size: 14px; }
+  .status.ok { color: #15803d; } .status.err { color: #b91c1c; } .status.busy { color: #6b7280; }
+  .filters { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .card { background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid #e5e7eb; }
+  .card .top { display: flex; justify-content: space-between; font-size: 12px; color: #6b7280; }
+  .card .main { font-size: 15px; margin-top: 4px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #fde68a; color: #92400e; margin-left: 6px; }
+  .empty { color: #9ca3af; text-align: center; padding: 24px 0; }
+  .detail-imgs { display: flex; gap: 8px; }
+  .detail-imgs div { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; min-height: 80px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #9ca3af; overflow: hidden; }
+  .detail-imgs img { width: 100%; display: block; }
+  .meta { font-size: 12px; color: #6b7280; margin: 8px 0; line-height: 1.6; }
+  .gate { padding: 40px 16px; text-align: center; color: #b91c1c; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="who" id="who">読み込み中…</div>
+  <div class="sub">名刺登録(PoNavisShoot別館)</div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-view="shoot">撮影</button>
+  <button class="tab" data-view="list">一覧・メモ追記</button>
+</div>
+
+<!-- 撮影 -->
+<section class="view active" id="view-shoot">
+  <div class="slots">
+    <div class="slot">
+      <div class="slot-label">① 表</div>
+      <div class="slot-box" id="box-front"><span class="slot-hint">タップして撮影</span><img id="img-front" alt=""><input type="file" accept="image/*" capture="environment" id="in-front"></div>
+    </div>
+    <div class="slot">
+      <div class="slot-label">② 裏</div>
+      <div class="slot-box" id="box-back"><span class="slot-hint">タップして撮影</span><img id="img-back" alt=""><input type="file" accept="image/*" capture="environment" id="in-back"></div>
+    </div>
+  </div>
+  <div class="row"><label class="check"><input type="checkbox" id="no-back"> 裏面なし(白紙・印字なし)</label></div>
+
+  <div class="field-label">目的 <small>(任意)</small></div>
+  <div class="chips" id="purpose-chips"></div>
+
+  <div class="field-label">場所 <small>(任意)</small></div>
+  <div class="inline"><input type="text" id="place" placeholder="例: 和歌山商工会議所 展示会場"><button class="btn" id="btn-geo" type="button">現在地</button></div>
+
+  <div class="field-label">メモ <small>(任意。後からでも書けます)</small></div>
+  <textarea id="note" placeholder="例: ○○の件で紹介してもらった。来月訪問予定"></textarea>
+
+  <button class="primary" id="btn-save" disabled>保存する</button>
+  <div class="status" id="shoot-status"></div>
+</section>
+
+<!-- 一覧 -->
+<section class="view" id="view-list">
+  <div id="list-pane">
+    <div class="filters" id="filters"></div>
+    <div id="list"></div>
+  </div>
+  <div id="detail-pane" style="display:none">
+    <button class="btn" id="btn-back" type="button">← 一覧へ戻る</button>
+    <div class="row detail-imgs"><div id="d-front">表</div><div id="d-back">裏</div></div>
+    <div class="meta" id="d-meta"></div>
+    <div class="field-label">目的</div>
+    <div class="chips" id="d-purpose-chips"></div>
+    <div class="field-label">場所</div>
+    <div class="inline"><input type="text" id="d-place"><button class="btn" id="btn-d-geo" type="button">現在地</button></div>
+    <div class="field-label">メモ</div>
+    <textarea id="d-note"></textarea>
+    <button class="primary" id="btn-d-save" disabled>メモを保存</button>
+    <div class="status" id="detail-status"></div>
+  </div>
+</section>
+
+<script>
+// ★デプロイ後のGASウェブアプリURLに書き換える(GAS側のデプロイ→ウェブアプリのURL)
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw2tt98PZcaFTtDWYDIpYw-2_zhODCJW5LCXo51xK1YqqwIqrqDU30Cn12v3oRAyREuqg/exec";
+
+const PURPOSES = ['展示会', '訪問', '紹介', 'セミナー', 'その他'];
+const MAX_EDGE = 1800;
+const JPEG_QUALITY = 0.85;
+const TOKEN = new URLSearchParams(location.search).get('token');
+
+const $ = (id) => document.getElementById(id);
+let staffName = '';
+let cards = [];
+let filterMode = 'all';
+let shoot = { front: null, back: null, purpose: '', sending: false };
+let detail = { id: null, purpose: '', original: null };
+
+// ---------- 通信 ----------
+async function api(payload) {
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ token: TOKEN }, payload))
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || '通信エラー');
+  return json;
+}
+
+function setStatus(el, text, kind) { el.textContent = text; el.className = 'status ' + (kind || ''); }
+
+// ---------- 画像処理(向きを正しくして縮小しJPEG化) ----------
+async function toJpegBase64(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', JPEG_QUALITY));
+  const dataUri = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+  return { base64: dataUri.split(',')[1], preview: dataUri };
+}
+
+// ---------- 共通UI ----------
+function buildChips(container, current, onPick) {
+  container.innerHTML = '';
+  PURPOSES.forEach((p) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (p === current ? ' on' : '');
+    b.textContent = p;
+    b.onclick = () => onPick(p === current ? '' : p); // もう一度押すと解除
+    container.appendChild(b);
+  });
+}
+
+function fillAddressFromGps(inputEl, statusEl, btn) {
+  if (!navigator.geolocation) { setStatus(statusEl, 'この端末では現在地を取得できません', 'err'); return; }
+  btn.disabled = true;
+  setStatus(statusEl, '現在地を取得中…', 'busy');
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const r = await api({ action: 'geocode', lat: pos.coords.latitude, lng: pos.coords.longitude });
+      if (r.address) { inputEl.value = r.address; inputEl.dispatchEvent(new Event('input')); setStatus(statusEl, '現在地を入れました(修正できます)', 'ok'); }
+      else setStatus(statusEl, '住所を取得できませんでした。手入力してください', 'err');
+    } catch (e) { setStatus(statusEl, String(e.message || e), 'err'); }
+    btn.disabled = false;
+  }, () => { setStatus(statusEl, '現在地の許可がありません。手入力してください', 'err'); btn.disabled = false; },
+  { enableHighAccuracy: false, timeout: 10000 });
+}
+
+// ---------- 撮影タブ ----------
+function refreshShootButton() {
+  $('btn-save').disabled = !(shoot.front && !shoot.sending && staffName);
+  $('btn-save').textContent = shoot.sending ? '送信中…' : '保存する';
+}
+
+async function pickImage(which, file) {
+  if (!file) return;
+  try {
+    shoot[which] = await toJpegBase64(file);
+    $('img-' + which).src = shoot[which].preview;
+    $('box-' + which).classList.add('filled');
+  } catch (e) { setStatus($('shoot-status'), '画像を読み込めませんでした: ' + e.message, 'err'); }
+  refreshShootButton();
+}
+$('in-front').onchange = (e) => { pickImage('front', e.target.files[0]); e.target.value = ''; };
+$('in-back').onchange = (e) => { pickImage('back', e.target.files[0]); e.target.value = ''; };
+
+$('no-back').onchange = () => {
+  const on = $('no-back').checked;
+  $('box-back').classList.toggle('disabled', on);
+  if (on) { shoot.back = null; $('box-back').classList.remove('filled'); $('img-back').removeAttribute('src'); }
+};
+
+function renderShootChips() { buildChips($('purpose-chips'), shoot.purpose, (p) => { shoot.purpose = p; renderShootChips(); }); }
+$('btn-geo').onclick = () => fillAddressFromGps($('place'), $('shoot-status'), $('btn-geo'));
+
+function resetShootForm() {
+  shoot = { front: null, back: null, purpose: '', sending: false };
+  ['front', 'back'].forEach((w) => { $('box-' + w).classList.remove('filled'); $('img-' + w).removeAttribute('src'); });
+  $('no-back').checked = false; $('box-back').classList.remove('disabled');
+  $('place').value = ''; $('note').value = '';
+  renderShootChips(); refreshShootButton();
+}
+
+$('btn-save').onclick = async () => {
+  shoot.sending = true; refreshShootButton();
+  setStatus($('shoot-status'), '送信中…(そのままお待ちください)', 'busy');
+  try {
+    const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 24);
+    await api({
+      action: 'create', id,
+      front: shoot.front.base64,
+      back: shoot.back ? shoot.back.base64 : null,
+      memo: { purpose: shoot.purpose, place: $('place').value, note: $('note').value }
+    });
+    resetShootForm();
+    setStatus($('shoot-status'), '保存しました。次の名刺を撮影できます', 'ok');
+    loadInfo();
+  } catch (e) {
+    shoot.sending = false; refreshShootButton();
+    setStatus($('shoot-status'), '保存できませんでした(入力内容は残してあります): ' + (e.message || e), 'err');
+  }
+};
+
+// ---------- 一覧タブ ----------
+function fmtDate(s) { return (s || '').slice(0, 16).replace(/-/g, '/'); }
+
+function renderFilters() {
+  const defs = [['all', 'すべて'], ['nomemo', 'メモ未記入'], ['mine', '自分の登録']];
+  $('filters').innerHTML = '';
+  defs.forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip' + (filterMode === k ? ' on' : ''); b.textContent = label;
+    b.onclick = () => { filterMode = k; renderFilters(); renderList(); };
+    $('filters').appendChild(b);
+  });
+}
+
+function renderList() {
+  const items = cards.filter((c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'mine' && c.registeredBy === staffName));
+  const box = $('list');
+  box.innerHTML = '';
+  if (!items.length) { box.innerHTML = '<div class="empty">該当する名刺はありません</div>'; return; }
+  items.forEach((c) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    const head = [c.purpose, c.place].filter(Boolean).join(' / ');
+    div.innerHTML = '<div class="top"><span></span><span></span></div><div class="main"></div>';
+    div.querySelector('.top span:first-child').textContent = fmtDate(c.registeredAt);
+    div.querySelector('.top span:last-child').textContent = '登録: ' + c.registeredBy;
+    const main = div.querySelector('.main');
+    main.textContent = head || (c.note ? c.note.slice(0, 40) : '(メモなし)');
+    if (c.memoStatus !== '済') { const bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = 'メモ未記入'; main.appendChild(bd); }
+    div.onclick = () => openDetail(c.id);
+    box.appendChild(div);
+  });
+}
+
+async function openDetail(id) {
+  $('list-pane').style.display = 'none'; $('detail-pane').style.display = 'block';
+  detail = { id, purpose: '', original: null };
+  ['d-front', 'd-back'].forEach((k) => { $(k).textContent = '読み込み中…'; });
+  $('d-meta').textContent = ''; $('d-place').value = ''; $('d-note').value = '';
+  $('btn-d-save').disabled = true; setStatus($('detail-status'), '', '');
+  renderDetailChips();
+  try {
+    const { card } = await api({ action: 'get', id });
+    detail.original = { purpose: card.purpose, place: card.place, note: card.note };
+    detail.purpose = card.purpose;
+    $('d-place').value = card.place; $('d-note').value = card.note;
+    $('d-meta').textContent = '登録: ' + card.registeredBy + '(' + fmtDate(card.registeredAt) + ')  最終更新: ' + card.lastUpdatedBy + '(' + fmtDate(card.lastUpdatedAt) + ')';
+    showImg('d-front', card.frontImage, '表'); showImg('d-back', card.backImage, '裏なし');
+    renderDetailChips(); refreshDetailSave();
+  } catch (e) { setStatus($('detail-status'), String(e.message || e), 'err'); }
+}
+
+function showImg(id, src, emptyText) {
+  const el = $(id); el.textContent = '';
+  if (!src) { el.textContent = emptyText; return; }
+  const img = document.createElement('img'); img.src = src; el.appendChild(img);
+}
+
+function renderDetailChips() { buildChips($('d-purpose-chips'), detail.purpose, (p) => { detail.purpose = p; renderDetailChips(); refreshDetailSave(); }); }
+function refreshDetailSave() {
+  const o = detail.original;
+  $('btn-d-save').disabled = !o || (o.purpose === detail.purpose && o.place === $('d-place').value && o.note === $('d-note').value);
+}
+$('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
+$('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status'), $('btn-d-geo'));
+
+$('btn-d-save').onclick = async () => {
+  $('btn-d-save').disabled = true; setStatus($('detail-status'), '保存中…', 'busy');
+  try {
+    const memo = { purpose: detail.purpose, place: $('d-place').value, note: $('d-note').value };
+    await api({ action: 'updateMemo', id: detail.id, memo });
+    detail.original = memo;
+    setStatus($('detail-status'), 'メモを保存しました', 'ok');
+    loadInfo();
+  } catch (e) { setStatus($('detail-status'), '保存できませんでした: ' + (e.message || e), 'err'); }
+  refreshDetailSave();
+};
+$('btn-back').onclick = () => { $('detail-pane').style.display = 'none'; $('list-pane').style.display = 'block'; };
+
+// ---------- タブ・初期化 ----------
+document.querySelectorAll('.tab').forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + t.dataset.view));
+  };
+});
+
+async function loadInfo() {
+  try {
+    const r = await api({ action: 'info' });
+    staffName = r.staff; cards = r.cards;
+    $('who').textContent = staffName + ' さんの名刺登録';
+    renderList(); refreshShootButton();
+  } catch (e) {
+    $('who').textContent = '登録者を確認できません';
+    if (!staffName) document.body.insertAdjacentHTML('beforeend', '<div class="gate">' + String(e.message || e).replace(/</g, '&lt;') + '</div>');
+  }
+}
+
+if (!TOKEN) {
+  $('who').textContent = '登録者を確認できません';
+  document.body.insertAdjacentHTML('beforeend', '<div class="gate">専用URL(?token=…付き)から開いてください</div>');
+} else if (GAS_URL.indexOf('ここに') === 0) {
+  $('who').textContent = '設定が未完了です';
+  document.body.insertAdjacentHTML('beforeend', '<div class="gate">HTML内の GAS_URL を、デプロイ後のウェブアプリURLに書き換えてください</div>');
+} else {
+  renderShootChips(); renderFilters(); refreshShootButton(); loadInfo();
+}
+</script>
+</body>
+</html>
