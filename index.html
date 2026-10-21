@@ -15,7 +15,11 @@
   .tab.active { color: #0f4c81; border-bottom-color: #0f4c81; font-weight: bold; }
   .view { display: none; padding: 14px 16px; max-width: 640px; margin: 0 auto; }
   .view.active { display: block; }
-  .slots { display: flex; gap: 10px; }
+  .slots { display: flex; flex-direction: column; gap: 12px; }
+  .slot-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .slot-head .slot-label { margin-bottom: 0; }
+  .rot { display: flex; gap: 6px; }
+  .rot button { padding: 4px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #0f4c81; background: #fff; color: #0f4c81; }
   .slot { flex: 1; }
   .slot-label { font-size: 13px; color: #4b5563; margin-bottom: 4px; }
   .slot-box { position: relative; aspect-ratio: 91 / 55; background: #fff; border: 2px dashed #9ca3af; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px; }
@@ -71,11 +75,11 @@
 <section class="view active" id="view-shoot">
   <div class="slots">
     <div class="slot">
-      <div class="slot-label">① 表</div>
+      <div class="slot-head"><div class="slot-label">① 表(名刺を横向きに)</div><div class="rot"><button type="button" id="rot-l-front" disabled>↺ 左回転</button><button type="button" id="rot-r-front" disabled>↻ 右回転</button></div></div>
       <div class="slot-box" id="box-front"><span class="slot-hint">タップして撮影</span><img id="img-front" alt=""><input type="file" accept="image/*" capture="environment" id="in-front"></div>
     </div>
     <div class="slot">
-      <div class="slot-label">② 裏</div>
+      <div class="slot-head"><div class="slot-label">② 裏</div><div class="rot"><button type="button" id="rot-l-back" disabled>↺ 左回転</button><button type="button" id="rot-r-back" disabled>↻ 右回転</button></div></div>
       <div class="slot-box" id="box-back"><span class="slot-hint">タップして撮影</span><img id="img-back" alt=""><input type="file" accept="image/*" capture="environment" id="in-back"></div>
     </div>
   </div>
@@ -146,13 +150,31 @@ async function api(payload) {
 function setStatus(el, text, kind) { el.textContent = text; el.className = 'status ' + (kind || ''); }
 
 // ---------- 画像処理(向きを正しくして縮小しJPEG化) ----------
-async function toJpegBase64(file) {
+// 名刺は横向きが大半なので、縦長に撮れた写真は自動で90°回して横向きにする(縦向きの名刺は回転ボタンで直す)
+async function fileToCanvas(file) {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
-  const canvas = document.createElement('canvas');
+  let canvas = document.createElement('canvas');
   canvas.width = Math.round(bmp.width * scale);
   canvas.height = Math.round(bmp.height * scale);
   canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  if (canvas.height > canvas.width) canvas = rotateCanvas(canvas, 1);
+  return canvas;
+}
+
+// dir: 1=右(時計回り)90°、-1=左90°
+function rotateCanvas(src, dir) {
+  const out = document.createElement('canvas');
+  out.width = src.height;
+  out.height = src.width;
+  const ctx = out.getContext('2d');
+  if (dir > 0) { ctx.translate(out.width, 0); ctx.rotate(Math.PI / 2); }
+  else { ctx.translate(0, out.height); ctx.rotate(-Math.PI / 2); }
+  ctx.drawImage(src, 0, 0);
+  return out;
+}
+
+async function canvasToJpeg(canvas) {
   const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', JPEG_QUALITY));
   const dataUri = await new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -160,7 +182,7 @@ async function toJpegBase64(file) {
     fr.onerror = reject;
     fr.readAsDataURL(blob);
   });
-  return { base64: dataUri.split(',')[1], preview: dataUri };
+  return { base64: dataUri.split(',')[1], preview: dataUri, canvas: canvas };
 }
 
 // ---------- 共通UI ----------
@@ -195,17 +217,43 @@ function fillAddressFromGps(inputEl, statusEl, btn) {
 function refreshShootButton() {
   $('btn-save').disabled = !(shoot.front && !shoot.sending && staffName);
   $('btn-save').textContent = shoot.sending ? '送信中…' : '保存する';
+  refreshRotateButtons();
+}
+
+function showShot(which) {
+  $('img-' + which).src = shoot[which].preview;
+  $('box-' + which).classList.add('filled');
+}
+
+function refreshRotateButtons() {
+  ['front', 'back'].forEach((w) => {
+    const off = !shoot[w] || shoot.sending;
+    $('rot-l-' + w).disabled = off;
+    $('rot-r-' + w).disabled = off;
+  });
 }
 
 async function pickImage(which, file) {
   if (!file) return;
   try {
-    shoot[which] = await toJpegBase64(file);
-    $('img-' + which).src = shoot[which].preview;
-    $('box-' + which).classList.add('filled');
+    shoot[which] = await canvasToJpeg(await fileToCanvas(file));
+    showShot(which);
   } catch (e) { setStatus($('shoot-status'), '画像を読み込めませんでした: ' + e.message, 'err'); }
   refreshShootButton();
 }
+
+// 保存前の回転。回した結果をそのまま保存する(Driveに入る画像自体が回った状態になる)
+async function rotateShot(which, dir) {
+  if (!shoot[which]) return;
+  try {
+    shoot[which] = await canvasToJpeg(rotateCanvas(shoot[which].canvas, dir));
+    showShot(which);
+  } catch (e) { setStatus($('shoot-status'), '回転できませんでした: ' + e.message, 'err'); }
+}
+['front', 'back'].forEach((w) => {
+  $('rot-l-' + w).onclick = () => rotateShot(w, -1);
+  $('rot-r-' + w).onclick = () => rotateShot(w, 1);
+});
 $('in-front').onchange = (e) => { pickImage('front', e.target.files[0]); e.target.value = ''; };
 $('in-back').onchange = (e) => { pickImage('back', e.target.files[0]); e.target.value = ''; };
 
@@ -213,6 +261,7 @@ $('no-back').onchange = () => {
   const on = $('no-back').checked;
   $('box-back').classList.toggle('disabled', on);
   if (on) { shoot.back = null; $('box-back').classList.remove('filled'); $('img-back').removeAttribute('src'); }
+  refreshRotateButtons();
 };
 
 function renderShootChips() { buildChips($('purpose-chips'), shoot.purpose, (p) => { shoot.purpose = p; renderShootChips(); }); }
