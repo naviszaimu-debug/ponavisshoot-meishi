@@ -22,13 +22,19 @@
   .tabs { display: flex; background: #fff; border-bottom: 1px solid #d1d5db; position: sticky; top: 58px; z-index: 4; }
   .tab { flex: 1; padding: 12px 0; text-align: center; font-size: 15px; background: none; border: none; border-bottom: 3px solid transparent; color: #6b7280; }
   .tab.active { color: #0f4c81; border-bottom-color: #0f4c81; font-weight: bold; }
-  .view { display: none; padding: 14px 16px; max-width: 640px; margin: 0 auto; }
+  .view { display: none; padding: 14px 16px 150px; max-width: 640px; margin: 0 auto; }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: #fff; border-top: 1px solid #d1d5db; padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); }
+  .savebar .inner { max-width: 640px; margin: 0 auto; }
+  .savebar .status { margin: 0 0 6px; min-height: 18px; font-size: 13px; }
+  .savebar button.primary { margin-top: 0; }
   .view.active { display: block; }
   .slots { display: flex; flex-direction: column; gap: 12px; }
-  .slot-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .slot-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .slot-head .slot-label { margin-bottom: 0; }
-  .rot { display: flex; gap: 6px; }
-  .rot button { padding: 4px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #0f4c81; background: #fff; color: #0f4c81; }
+  .rot { display: flex; gap: 12px; }
+  .rot button { min-height: 48px; min-width: 84px; padding: 0 14px; font-size: 16px; font-weight: bold; border-radius: 10px; border: 2px solid #0f4c81; background: #fff; color: #0f4c81; }
+  .rotbar { justify-content: flex-end; margin-top: 10px; gap: 8px; }
+  .rotbar button { flex: 1; min-width: 0; padding: 0 6px; white-space: nowrap; }
   .slot { flex: 1; }
   .slot-label { font-size: 13px; color: #4b5563; margin-bottom: 4px; }
   .slot-box { position: relative; aspect-ratio: 91 / 55; background: #fff; border: 2px dashed #9ca3af; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px; }
@@ -78,7 +84,8 @@
   .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #fde68a; color: #92400e; margin-left: 6px; }
   .empty { color: #9ca3af; text-align: center; padding: 24px 0; }
   .detail-imgs { display: flex; gap: 8px; }
-  .detail-imgs div { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; min-height: 80px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #9ca3af; overflow: hidden; }
+  .dcol { flex: 1; min-width: 0; }
+  .detail-imgs .dimg { width: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; min-height: 80px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #9ca3af; overflow: hidden; }
   .detail-imgs img { width: 100%; display: block; }
   .meta { font-size: 12px; color: #6b7280; margin: 8px 0; line-height: 1.6; }
   .gate { padding: 40px 16px; text-align: center; color: #b91c1c; }
@@ -132,9 +139,9 @@
   <div class="field-label">メモ <small>(任意。後からでも書けます)</small></div>
   <textarea id="note" placeholder="例: ○○の件で紹介してもらった。来月訪問予定"></textarea>
 
-  <button class="primary" id="btn-save" disabled>保存する</button>
   <div class="hint">保存すると、いったんこの端末に入ります。上の「まとめて送信」を押すと、まとめて送られます。</div>
-  <div class="status" id="shoot-status"></div>
+  <!-- 保存ボタンは画面の下に常に固定(スクロールしなくても押せる) -->
+  <div class="savebar"><div class="inner"><div class="status" id="shoot-status"></div><button class="primary" id="btn-save" disabled>保存する</button></div></div>
 </section>
 
 <!-- 一覧 -->
@@ -146,7 +153,10 @@
   </div>
   <div id="detail-pane" style="display:none">
     <button class="btn" id="btn-back" type="button">← 一覧へ戻る</button>
-    <div class="row detail-imgs"><div id="d-front">表</div><div id="d-back">裏</div></div>
+    <div class="row detail-imgs">
+      <div class="dcol"><div class="dimg" id="d-front">表</div><div class="rot rotbar"><button type="button" id="drot-l-front" disabled>↺ 左</button><button type="button" id="drot-r-front" disabled>↻ 右</button></div></div>
+      <div class="dcol"><div class="dimg" id="d-back">裏</div><div class="rot rotbar"><button type="button" id="drot-l-back" disabled>↺ 左</button><button type="button" id="drot-r-back" disabled>↻ 右</button></div></div>
+    </div>
     <div class="meta" id="d-meta"></div>
 
     <div class="field-label">名称 <small>(会社名・氏名など。任意)</small></div>
@@ -170,8 +180,7 @@
     <div class="section-title">その他の読み取り情報</div>
     <div id="d-ex-bottom"></div>
 
-    <button class="primary" id="btn-d-save" disabled>保存</button>
-    <div class="status" id="detail-status"></div>
+    <div class="savebar"><div class="inner"><div class="status" id="detail-status"></div><button class="primary" id="btn-d-save" disabled>保存</button></div></div>
   </div>
 </section>
 
@@ -196,7 +205,7 @@ let batchSending = false;
 let cards = [];
 let filterMode = 'all';
 let shoot = { front: null, back: null, purpose: '', category: '', sending: false };
-let detail = { id: null, purpose: '', category: '', original: null };
+let detail = { id: null, purpose: '', category: '', original: null, rot: { front: 0, back: 0 }, base: { front: '', back: '' }, saving: false };
 
 // ---------- 通信 ----------
 async function api(payload) {
@@ -516,7 +525,7 @@ function sortValue(c, key) {
   if (key === 'reg') return c.registeredAt || '';
   if (key === 'rcv') return c.receivedDate || '';
   if (key === 'company') return ex.company || c.name || '';
-  if (key === 'person') return ex.person || '';
+  if (key === 'person') return ex.kana || ex.person || '';
   if (key === 'industry') return ex.industry || '';
   if (key === 'category') return c.category || '';
   return '';
@@ -546,13 +555,14 @@ $('sort-key').onchange = () => { sortKey = $('sort-key').value; saveSort(); rend
 $('sort-dir').onclick = () => { sortDesc = !sortDesc; saveSort(); renderSortBar(); renderList(); };
 
 // ---------- 一覧のサムネ(見えているカードの分だけ、まとめて取りに行く) ----------
-const thumbCache = new Map();
+const thumbCache = new Map(); // サムネのファイルID → 画像
+const tidOf = new Map(); // 名刺ID → いまのサムネのファイルID
 let thumbQueue = new Set();
 let thumbTimer = null;
 let thumbBusy = false;
 
 function paintThumb(id) {
-  const uri = thumbCache.get(id);
+  const uri = thumbCache.get(tidOf.get(id));
   if (!uri) return;
   document.querySelectorAll('img.thumb[data-id="' + id + '"]').forEach((im) => {
     im.src = uri; im.classList.add('on'); im.parentNode.classList.add('has');
@@ -560,7 +570,7 @@ function paintThumb(id) {
 }
 const thumbAsked = new Set();
 function wantThumb(id) {
-  if (thumbCache.has(id)) { paintThumb(id); return; }
+  if (thumbCache.has(tidOf.get(id))) { paintThumb(id); return; }
   if (thumbAsked.has(id)) return;
   thumbAsked.add(id);
   thumbQueue.add(id);
@@ -573,17 +583,18 @@ async function flushThumbs() {
   try {
     let ids = Array.from(thumbQueue);
     thumbQueue = new Set();
-    const stored = await tGetMany(ids);
+    const stored = await tGetMany(ids.map((id) => tidOf.get(id)));
     ids = ids.filter((id) => {
-      if (stored[id]) { thumbCache.set(id, stored[id]); paintThumb(id); return false; }
+      const tid = tidOf.get(id);
+      if (stored[tid]) { thumbCache.set(tid, stored[tid]); paintThumb(id); return false; }
       return true;
     });
     for (let i = 0; i < ids.length; i += 10) {
       const r = await api({ action: 'thumbs', ids: ids.slice(i, i + 10) });
-      Object.keys(r.thumbs || {}).forEach((id) => { thumbCache.set(id, r.thumbs[id]); tPut(id, r.thumbs[id]); paintThumb(id); });
+      Object.keys(r.thumbs || {}).forEach((id) => { const tid = tidOf.get(id); thumbCache.set(tid, r.thumbs[id]); tPut(tid, r.thumbs[id]); paintThumb(id); });
     }
   } catch (e) { /* サムネが取れなくても一覧は使える */ }
-  thumbAsked.forEach((id) => { if (!thumbCache.has(id)) thumbAsked.delete(id); });
+  thumbAsked.forEach((id) => { if (!thumbCache.has(tidOf.get(id))) thumbAsked.delete(id); });
   thumbBusy = false;
 }
 // 見えているカード(画面の上下300px以内)のサムネだけを頼む。スクロール・タブ切替・一覧の描き直しの度に呼ぶ
@@ -629,8 +640,9 @@ function renderList() {
     const im = div.querySelector('img.thumb');
     im.dataset.id = c.id;
     if (c.pending) { if (c.thumbUri) { im.src = c.thumbUri; im.classList.add('on'); im.parentNode.classList.add('has'); } }
-    else if (c.hasThumb) {
-      if (thumbCache.has(c.id)) paintThumb2(im, thumbCache.get(c.id));
+    else if (c.thumbId) {
+      tidOf.set(c.id, c.thumbId);
+      if (thumbCache.has(c.thumbId)) paintThumb2(im, thumbCache.get(c.thumbId));
       else im.parentNode.dataset.id = c.id; // 見える範囲に入ったらloadVisibleThumbsが取りに行く
     }
     if (!c.pending) div.onclick = () => openDetail(c.id); // 未送信分は送信後に開ける
@@ -700,11 +712,50 @@ function setEx(ex) {
   EX_ALL.forEach((d) => { $('dx-' + d[0]).value = ex[d[0]] || ''; refreshExAction(d[0]); });
 }
 
+function loadImg(src) {
+  return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('画像を読み込めませんでした')); im.src = src; });
+}
+// 元の画像を、右回り90°×回数だけ回したcanvasにする
+function rotatedCanvasFromImage(im, deg) {
+  let c = document.createElement('canvas');
+  c.width = im.naturalWidth; c.height = im.naturalHeight;
+  c.getContext('2d').drawImage(im, 0, 0);
+  for (let i = 0; i < ((deg % 360) / 90); i++) c = rotateCanvas(c, 1);
+  return c;
+}
+
+// 詳細の画像。回転は保存を押すまで画面上のプレビューだけ(押し間違えても戻せる)
+function refreshDetailRotButtons() {
+  ['front', 'back'].forEach((w) => {
+    const off = !detail.base[w] || detail.saving;
+    $('drot-l-' + w).disabled = off; $('drot-r-' + w).disabled = off;
+  });
+}
+async function renderDetailImg(which) {
+  const el = $('d-' + which);
+  const base = detail.base[which];
+  const deg = detail.rot[which];
+  if (!base) { el.textContent = which === 'front' ? '表' : '裏なし'; refreshDetailRotButtons(); return; }
+  try {
+    const im = await loadImg(base);
+    const src = deg ? rotatedCanvasFromImage(im, deg).toDataURL('image/jpeg', 0.8) : base;
+    el.textContent = '';
+    const img = document.createElement('img'); img.src = src; el.appendChild(img);
+  } catch (e) { el.textContent = '画像を表示できません'; }
+  refreshDetailRotButtons();
+}
+['front', 'back'].forEach((w) => {
+  const turn = (dir) => { if (!detail.base[w]) return; detail.rot[w] = (detail.rot[w] + dir * 90 + 360) % 360; renderDetailImg(w); refreshDetailSave(); };
+  $('drot-l-' + w).onclick = () => turn(-1);
+  $('drot-r-' + w).onclick = () => turn(1);
+});
+
 async function openDetail(id) {
   $('list-pane').style.display = 'none'; $('detail-pane').style.display = 'block';
   window.scrollTo(0, 0);
-  detail = { id, purpose: '', category: '', original: null };
+  detail = { id, purpose: '', category: '', original: null, rot: { front: 0, back: 0 }, base: { front: '', back: '' }, saving: false };
   ['d-front', 'd-back'].forEach((k) => { $(k).textContent = '読み込み中…'; });
+  refreshDetailRotButtons();
   $('d-meta').textContent = ''; $('d-name').value = ''; $('d-received').value = ''; $('d-place').value = ''; $('d-note').value = '';
   setEx({});
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '', '');
@@ -717,7 +768,8 @@ async function openDetail(id) {
     detail.purpose = card.purpose; detail.category = card.category;
     $('d-place').value = card.place; $('d-note').value = card.note;
     $('d-meta').textContent = '登録: ' + card.registeredBy + '(' + fmtDate(card.registeredAt) + ')  最終更新: ' + card.lastUpdatedBy + '(' + fmtDate(card.lastUpdatedAt) + ')';
-    showImg('d-front', card.frontImage, '表'); showImg('d-back', card.backImage, '裏なし');
+    detail.base.front = card.frontImage || ''; detail.base.back = card.backImage || '';
+    renderDetailImg('front'); renderDetailImg('back');
     renderDetailChips(); refreshDetailSave();
   } catch (e) { setStatus($('detail-status'), String(e.message || e), 'err'); }
 }
@@ -732,25 +784,57 @@ function renderDetailChips() {
   buildChips($('d-purpose-chips'), detail.purpose, (p) => { detail.purpose = p; renderDetailChips(); refreshDetailSave(); });
   buildChips($('d-category-chips'), detail.category, (p) => { detail.category = p; renderDetailChips(); refreshDetailSave(); }, CATEGORIES);
 }
+function detailMemoSame() {
+  const o = detail.original;
+  return !!o && o.name === $('d-name').value && o.receivedDate === $('d-received').value && o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value && JSON.stringify(o.ex) === JSON.stringify(readEx());
+}
 function refreshDetailSave() {
   const o = detail.original;
   const dateOk = $('d-received').value !== '' || !o || o.receivedDate === ''; // 入っている受領日は空にできない
-  const same = !!o && o.name === $('d-name').value && o.receivedDate === $('d-received').value && o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value && JSON.stringify(o.ex) === JSON.stringify(readEx());
-  $('btn-d-save').disabled = !o || !dateOk || same;
+  const rotDirty = !!detail.rot && (detail.rot.front !== 0 || detail.rot.back !== 0);
+  $('btn-d-save').disabled = !o || !dateOk || detail.saving || (detailMemoSame() && !rotDirty);
 }
 $('d-name').oninput = refreshDetailSave; $('d-received').oninput = refreshDetailSave; $('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
 $('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status'), $('btn-d-geo'));
 
+// 回した画像で差し替える: 元の画像を取り、回して、Driveの画像(表面ならサムネも)を置き換える
+async function saveRotatedImage(w) {
+  const r = await api({ action: 'getImage', id: detail.id, which: w });
+  const im = await loadImg('data:image/jpeg;base64,' + r.image);
+  const c = rotatedCanvasFromImage(im, detail.rot[w]);
+  const uri = c.toDataURL('image/jpeg', JPEG_QUALITY);
+  const body = { action: 'replaceImage', id: detail.id, which: w, image: uri.split(',')[1] };
+  if (w === 'front') body.thumb = makeThumbBase64(c);
+  const res = await api(body);
+  detail.base[w] = uri; detail.rot[w] = 0;
+  if (w === 'front' && res.thumbId) {
+    const card = cards.find((x) => x.id === detail.id);
+    if (card) card.thumbId = res.thumbId;
+    const turi = 'data:image/jpeg;base64,' + body.thumb;
+    thumbCache.set(res.thumbId, turi); tPut(res.thumbId, turi); tidOf.set(detail.id, res.thumbId);
+    renderList();
+  }
+  await renderDetailImg(w);
+}
+
 $('btn-d-save').onclick = async () => {
-  $('btn-d-save').disabled = true; setStatus($('detail-status'), '保存中…', 'busy');
+  detail.saving = true; refreshDetailSave(); refreshDetailRotButtons();
   try {
-    const memo = { name: $('d-name').value, receivedDate: $('d-received').value, purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value, ex: readEx() };
-    await api({ action: 'updateMemo', id: detail.id, memo });
-    detail.original = memo;
+    const turned = ['front', 'back'].filter((w) => detail.rot[w] !== 0 && detail.base[w]);
+    for (const w of turned) {
+      setStatus($('detail-status'), (w === 'front' ? '表' : '裏') + 'の画像を回転して保存中…', 'busy');
+      await saveRotatedImage(w);
+    }
+    if (!detailMemoSame()) {
+      setStatus($('detail-status'), '保存中…', 'busy');
+      const memo = { name: $('d-name').value, receivedDate: $('d-received').value, purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value, ex: readEx() };
+      await api({ action: 'updateMemo', id: detail.id, memo });
+      detail.original = memo;
+    }
     setStatus($('detail-status'), '保存しました', 'ok');
     loadInfo();
   } catch (e) { setStatus($('detail-status'), '保存できませんでした: ' + (e.message || e), 'err'); }
-  refreshDetailSave();
+  detail.saving = false; refreshDetailSave(); refreshDetailRotButtons();
 };
 $('btn-back').onclick = () => { $('detail-pane').style.display = 'none'; $('list-pane').style.display = 'block'; setTimeout(loadVisibleThumbs, 50); };
 
