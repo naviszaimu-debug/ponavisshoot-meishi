@@ -16,6 +16,7 @@
   .menu-badge.show { display: inline; }
   #send-status { font-size: 12px; min-height: 16px; margin-top: 2px; }
   .badge.unsent { background: #fecaca; color: #991b1b; }
+  .subline { font-size: 12px; color: #6b7280; margin-top: 2px; }
   .hint { font-size: 12px; color: #6b7280; margin-top: 6px; }
   header .sub { font-size: 12px; opacity: .85; }
   .tabs { display: flex; background: #fff; border-bottom: 1px solid #d1d5db; position: sticky; top: 58px; z-index: 4; }
@@ -131,6 +132,8 @@
     <button class="btn" id="btn-back" type="button">← 一覧へ戻る</button>
     <div class="row detail-imgs"><div id="d-front">表</div><div id="d-back">裏</div></div>
     <div class="meta" id="d-meta"></div>
+    <div class="field-label">名称 <small>(会社名・氏名など。任意)</small></div>
+    <input type="text" id="d-name" placeholder="例: 税理士法人RINGS 武田 亨">
     <div class="field-label">受領日</div>
     <input type="date" id="d-received">
     <div class="field-label">区分</div>
@@ -455,9 +458,10 @@ function renderList() {
     div.querySelector('.top span:first-child').textContent = c.receivedDate ? '受領 ' + c.receivedDate.replace(/-/g, '/') : fmtDate(c.registeredAt);
     div.querySelector('.top span:last-child').textContent = '登録: ' + c.registeredBy;
     const main = div.querySelector('.main');
-    main.textContent = head || (c.note ? c.note.slice(0, 40) : '(メモなし)');
+    main.textContent = c.name || head || (c.note ? c.note.slice(0, 40) : '(メモなし)');
     if (c.pending) { const ub = document.createElement('span'); ub.className = 'badge unsent'; ub.textContent = '未送信'; main.appendChild(ub); }
     if (c.memoStatus !== '済') { const bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = 'メモ未記入'; main.appendChild(bd); }
+    if (c.name && head) { const sb = document.createElement('div'); sb.className = 'subline'; sb.textContent = head; div.appendChild(sb); }
     if (!c.pending) div.onclick = () => openDetail(c.id); // 未送信分は送信後に開ける
     box.appendChild(div);
   });
@@ -467,13 +471,13 @@ async function openDetail(id) {
   $('list-pane').style.display = 'none'; $('detail-pane').style.display = 'block';
   detail = { id, purpose: '', category: '', original: null };
   ['d-front', 'd-back'].forEach((k) => { $(k).textContent = '読み込み中…'; });
-  $('d-meta').textContent = ''; $('d-received').value = ''; $('d-place').value = ''; $('d-note').value = '';
+  $('d-meta').textContent = ''; $('d-name').value = ''; $('d-received').value = ''; $('d-place').value = ''; $('d-note').value = '';
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '', '');
   renderDetailChips();
   try {
     const { card } = await api({ action: 'get', id });
-    detail.original = { receivedDate: card.receivedDate, purpose: card.purpose, category: card.category, place: card.place, note: card.note };
-    $('d-received').value = card.receivedDate;
+    detail.original = { name: card.name, receivedDate: card.receivedDate, purpose: card.purpose, category: card.category, place: card.place, note: card.note };
+    $('d-received').value = card.receivedDate; $('d-name').value = card.name;
     detail.purpose = card.purpose; detail.category = card.category;
     $('d-place').value = card.place; $('d-note').value = card.note;
     $('d-meta').textContent = '登録: ' + card.registeredBy + '(' + fmtDate(card.registeredAt) + ')  最終更新: ' + card.lastUpdatedBy + '(' + fmtDate(card.lastUpdatedAt) + ')';
@@ -495,15 +499,15 @@ function renderDetailChips() {
 function refreshDetailSave() {
   const o = detail.original;
   const dateOk = $('d-received').value !== '' || !o || o.receivedDate === ''; // 入っている受領日は空にできない
-  $('btn-d-save').disabled = !o || !dateOk || (o.receivedDate === $('d-received').value && o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value);
+  $('btn-d-save').disabled = !o || !dateOk || (o.name === $('d-name').value && o.receivedDate === $('d-received').value && o.purpose === detail.purpose && o.category === detail.category && o.place === $('d-place').value && o.note === $('d-note').value);
 }
-$('d-received').oninput = refreshDetailSave; $('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
+$('d-name').oninput = refreshDetailSave; $('d-received').oninput = refreshDetailSave; $('d-place').oninput = refreshDetailSave; $('d-note').oninput = refreshDetailSave;
 $('btn-d-geo').onclick = () => fillAddressFromGps($('d-place'), $('detail-status'), $('btn-d-geo'));
 
 $('btn-d-save').onclick = async () => {
   $('btn-d-save').disabled = true; setStatus($('detail-status'), '保存中…', 'busy');
   try {
-    const memo = { receivedDate: $('d-received').value, purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value };
+    const memo = { name: $('d-name').value, receivedDate: $('d-received').value, purpose: detail.purpose, category: detail.category, place: $('d-place').value, note: $('d-note').value };
     await api({ action: 'updateMemo', id: detail.id, memo });
     detail.original = memo;
     setStatus($('detail-status'), 'メモを保存しました', 'ok');
