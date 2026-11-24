@@ -72,6 +72,11 @@
   .thumb { width: 100%; height: 100%; object-fit: contain; display: none; }
   .thumb.on { display: block; }
   .thumbbox.has .ph { display: none; }
+  .searchbar { position: relative; margin-bottom: 10px; }
+  .searchbar input { width: 100%; box-sizing: border-box; padding: 11px 40px 11px 12px; font-size: 16px; border: 1px solid #9ca3af; border-radius: 10px; background: #fff; }
+  .searchbar button { position: absolute; right: 4px; top: 4px; width: 36px; height: 36px; border: 0; background: transparent; font-size: 20px; color: #6b7280; }
+  .searchbar button:disabled { visibility: hidden; }
+  .resultcount { font-size: 12px; color: #6b7280; margin: -4px 0 8px; min-height: 16px; }
   .sortbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: #4b5563; }
   .sortbar select { padding: 8px; font-size: 14px; border: 1px solid #9ca3af; border-radius: 8px; background: #fff; }
   .section-title { font-size: 14px; font-weight: bold; color: #0f4c81; margin: 22px 0 4px; padding-bottom: 4px; border-bottom: 2px solid #0f4c81; }
@@ -147,8 +152,10 @@
 <!-- 一覧 -->
 <section class="view" id="view-list">
   <div id="list-pane">
+    <div class="searchbar"><input id="search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="会社名・氏名・電話・メモなどで検索"><button type="button" id="search-clear" aria-label="検索をクリア" disabled>×</button></div>
     <div class="filters" id="filters"></div>
     <div class="sortbar"><span>並び替え</span><select id="sort-key"></select><button class="btn" id="sort-dir" type="button"></button></div>
+    <div class="resultcount" id="resultcount"></div>
     <div id="list"></div>
   </div>
   <div id="detail-pane" style="display:none">
@@ -512,7 +519,7 @@ function renderFilters() {
 }
 
 // 並び替え(2026-10-22)。空欄の名刺は、昇順・降順どちらでも最後に回す。送信待ち(未送信)は常に先頭
-const SORTS = [['reg', '登録日時'], ['rcv', '受領日'], ['company', '会社名'], ['person', '氏名'], ['industry', '業種'], ['category', '区分']];
+const SORTS = [['reg', '登録日時'], ['rcv', '受領日'], ['company', '会社名(五十音)'], ['person', '氏名(五十音)'], ['industry', '業種'], ['category', '区分']];
 let sortKey = 'reg';
 let sortDesc = true;
 try {
@@ -524,8 +531,8 @@ function sortValue(c, key) {
   const ex = c.ex || {};
   if (key === 'reg') return c.registeredAt || '';
   if (key === 'rcv') return c.receivedDate || '';
-  if (key === 'company') return ex.company || c.name || '';
-  if (key === 'person') return ex.kana || ex.person || '';
+  if (key === 'company') return kanaKey(ex.companyKana || ex.company || c.name || '');
+  if (key === 'person') return kanaKey(ex.kana || ex.person || '');
   if (key === 'industry') return ex.industry || '';
   if (key === 'category') return c.category || '';
   return '';
@@ -536,10 +543,43 @@ function sortCards(list) {
     if (!x && !y) return 0;
     if (!x) return 1;
     if (!y) return -1;
-    const r = x.localeCompare(y, 'ja');
+    let r = x.localeCompare(y, 'ja');
+    // 会社名で並べた時、同じ会社の中は氏名(ふりがな優先)の五十音順。この順は昇順・降順どちらでも五十音の昇順のまま
+    if (r === 0 && sortKey === 'company') {
+      const p = sortValue(a, 'person'), q = sortValue(b, 'person');
+      return !p && !q ? 0 : !p ? 1 : !q ? -1 : p.localeCompare(q, 'ja');
+    }
     return sortDesc ? -r : r;
   });
 }
+// 並び替え・検索用のゆれ吸収(2026-11-24): 全角半角(NFKC)・英字の大小・カタカナ→ひらがな
+function normText(s) {
+  return String(s || '').normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+}
+function kanaKey(s) { return normText(s).replace(/[\s・･]+/g, ''); }
+// 検索用の文字列(1枚の名刺の全項目を1本につなぐ)。一覧の取得時に1回だけ作って持つ
+function buildSearchText(c) {
+  const ex = c.ex || {};
+  const parts = [c.name, c.category, c.purpose, c.place, c.note, c.registeredBy];
+  EX_ALL.forEach((d) => parts.push(ex[d[0]]));
+  const s = normText(parts.filter(Boolean).join(' '));
+  return s + ' ' + s.replace(/[\s\-ー−‐()（）]/g, ''); // 後半=電話のハイフン等を除いた形(数字での検索用)
+}
+let searchWords = [];
+function matchSearch(c) {
+  if (!searchWords.length) return true;
+  const s = c._s || (c._s = buildSearchText(c));
+  return searchWords.every((w) => s.indexOf(w) !== -1 || ((w2) => w2 && s.indexOf(w2) !== -1)(w.replace(/[\-ー−‐()（）]/g, '')));
+}
+let searchTimer = null;
+function applySearch() {
+  searchWords = normText($('search').value).split(/\s+/).filter(Boolean);
+  $('search-clear').disabled = !$('search').value;
+  renderList();
+}
+$('search').addEventListener('input', (e) => { if (e.isComposing) return; clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); });
+$('search').addEventListener('compositionend', () => { clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); });
+$('search-clear').onclick = () => { $('search').value = ''; applySearch(); };
 function renderSortBar() {
   const sel = $('sort-key');
   sel.innerHTML = '';
@@ -614,10 +654,11 @@ function renderList() {
     memoStatus: (p.memo.purpose || p.memo.place || p.memo.note) ? '済' : '未', category: p.memo.category, purpose: p.memo.purpose, place: p.memo.place, note: p.memo.note,
     thumbUri: p.thumb ? 'data:image/jpeg;base64,' + p.thumb : ''
   })).reverse();
-  const keep = (c) => filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'client' && c.category === '顧問先') || (filterMode === 'mine' && c.registeredBy === staffName);
+  const keep = (c) => matchSearch(c) && (filterMode === 'all' || (filterMode === 'nomemo' && c.memoStatus !== '済') || (filterMode === 'client' && c.category === '顧問先') || (filterMode === 'mine' && c.registeredBy === staffName));
   const items = pendingCards.filter(keep).concat(sortCards(cards.filter(keep)));
   const box = $('list');
   box.innerHTML = '';
+  $('resultcount').textContent = (searchWords.length || filterMode !== 'all') ? items.length + '件' : '';
   if (!items.length) { box.innerHTML = '<div class="empty">該当する名刺はありません</div>'; return; }
   items.forEach((c) => {
     const ex = c.ex || {};
@@ -654,7 +695,7 @@ function paintThumb2(im, uri) { im.src = uri; im.classList.add('on'); im.parentN
 
 // 名刺から読み取った項目(GAS側のEX_FIELDSと同じキー・順序)。上=よく使う連絡先、下=その他
 const EX_TOP = [
-  ['company', '会社名'], ['department', '部署'], ['title', '役職'], ['person', '氏名'], ['kana', 'ふりがな'],
+  ['company', '会社名'], ['companyKana', '会社名ふりがな'], ['department', '部署'], ['title', '役職'], ['person', '氏名'], ['kana', '氏名のふりがな'],
   ['tel1', '電話1', 'tel'], ['tel2', '電話2', 'tel'], ['fax', 'FAX'], ['email', 'メール', 'mail'],
   ['url', 'URL', 'url'], ['postal', '郵便番号'], ['address', '住所', 'map']
 ];
